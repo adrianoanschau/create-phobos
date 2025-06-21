@@ -1,0 +1,52 @@
+{
+  "name": "create-phobos",
+  "version": "0.0.0-dev",
+  "description": "CLI interativa para criar projetos React modernos com TypeScript e Vite",
+  "main": "index.js",
+  "bin": {
+    "create-phobos": "bin/create-phobos.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "template/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepublishOnly": "node -e \"console.log('Publicando create-phobos...')\""
+  },
+  "keywords": [
+    "react",
+    "typescript",
+    "vite",
+    "template",
+    "cli",
+    "styled-components",
+    "frontend",
+    "create-app",
+    "boilerplate",
+    "starter"
+  ],
+  "author": "Adriano Anschau <adrianoanschau@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adrianoanschau/create-phobos.git"
+  },
+  "bugs": {
+    "url": "https://github.com/adrianoanschau/create-phobos/issues"
+  },
+  "homepage": "https://github.com/adrianoanschau/create-phobos#readme",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "inquirer": "^8.2.6",
+    "ora": "^5.4.1",
+    "fs-extra": "^11.1.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
