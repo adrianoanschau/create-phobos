@@ -1,6 +1,6 @@
 {
   "name": "create-phobos",
-  "version": "0.0.0-dev",
+  "version": "0.1.0-dev",
   "description": "CLI interativa para criar projetos React modernos com TypeScript e Vite",
   "main": "index.js",
   "bin": {

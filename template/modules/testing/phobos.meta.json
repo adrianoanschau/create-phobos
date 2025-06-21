@@ -1,0 +1,27 @@
+{
+  "name": "Testes com Vitest",
+  "description": "Setup completo de Vitest, Testing Library e testes de exemplo",
+  "devDependencies": {
+    "vitest": "^1.0.0",
+    "@testing-library/react": "^14.1.0",
+    "@testing-library/jest-dom": "^6.1.0",
+    "@testing-library/user-event": "^14.5.0",
+    "jsdom": "^23.0.0"
+  },
+  "scripts": {
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "test:watch": "vitest --watch"
+  },
+  "injections": {
+    "src/main.tsx": {
+      "after": "import './index.css'",
+      "insert": "import '@testing-library/jest-dom';"
+    }
+  },
+  "copyRules": {
+    "src/modules/testing": "src/modules/testing",
+    "vitest.config.ts": "vitest.config.ts"
+  }
+} 

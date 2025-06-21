@@ -5,74 +5,225 @@ const fs = require('fs-extra');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const MODULES = {
-  'styled-ui': {
-    name: 'UI com Styled-Components',
-    description: 'Componentes reutilizáveis (Button, Input, Card, etc.)',
-    dependencies: {
-      'styled-components': '^6.1.0',
-      '@types/styled-components': '^5.1.34'
-    }
-  },
-  'react-router': {
-    name: 'React Router com estrutura de rotas',
-    description: 'Rotas com BrowserRouter, pages/, routes/ e layouts',
-    dependencies: {
-      'react-router-dom': '^6.20.0'
-    }
-  },
-  'theme-dark-light': {
-    name: 'Tema claro/escuro',
-    description: 'ThemeProvider com toggle claro/escuro',
-    dependencies: {
-      'styled-components': '^6.1.0',
-      '@types/styled-components': '^5.1.34'
-    }
-  },
-  'testing': {
-    name: 'Testes com Vitest',
-    description: 'Setup de Vitest, @testing-library/react, testes exemplo',
-    dependencies: {
-      'vitest': '^1.0.0',
-      '@testing-library/react': '^14.1.0',
-      '@testing-library/jest-dom': '^6.1.0',
-      '@testing-library/user-event': '^14.5.0',
-      'jsdom': '^23.0.0'
-    }
-  },
-  'local-cli': {
-    name: 'CLI local para scaffolding',
-    description: 'tools/cli.ts + script yarn generate para gerar componentes/hooks/pages',
-    dependencies: {
-      'tsx': '^4.6.0',
-      'commander': '^11.1.0',
-      'chalk': '^4.1.2'
-    }
-  },
-  'git-hooks': {
-    name: 'Git hooks com Husky',
-    description: 'Husky, lint-staged, .husky/, scripts de commit',
-    dependencies: {
-      'husky': '^8.0.3',
-      'lint-staged': '^15.2.0'
-    }
-  }
-};
-
-async function createProject(projectName) {
-  const spinner = ora('Inicializando projeto Phobos...').start();
+/**
+ * Carrega os metadados de todos os módulos disponíveis
+ */
+async function loadModulesMetadata() {
+  const modulesDir = path.join(__dirname, '../template/modules');
+  const modules = {};
   
   try {
+    const moduleDirs = await fs.readdir(modulesDir);
+    
+    for (const moduleDir of moduleDirs) {
+      const modulePath = path.join(modulesDir, moduleDir);
+      const stats = await fs.stat(modulePath);
+      
+      if (stats.isDirectory()) {
+        const metaPath = path.join(modulePath, 'phobos.meta.json');
+        
+        if (await fs.pathExists(metaPath)) {
+          try {
+            const metadata = await fs.readJson(metaPath);
+            modules[moduleDir] = {
+              key: moduleDir,
+              ...metadata
+            };
+          } catch (error) {
+            console.warn(chalk.yellow(`⚠️  Erro ao carregar metadados do módulo ${moduleDir}: ${error.message}`));
+          }
+        } else {
+          // Módulo sem phobos.meta.json - usar dados padrão
+          modules[moduleDir] = {
+            key: moduleDir,
+            name: moduleDir,
+            description: `Módulo ${moduleDir}`,
+            dependencies: {},
+            devDependencies: {},
+            scripts: {},
+            injections: {},
+            copyRules: {}
+          };
+        }
+      }
+    }
+  } catch (error) {
+    console.error(chalk.red(`❌ Erro ao carregar módulos: ${error.message}`));
+    throw error;
+  }
+  
+  return modules;
+}
+
+/**
+ * Aplica injeções de código em arquivos
+ */
+async function applyInjections(projectPath, injections) {
+  for (const [filePath, injectionConfig] of Object.entries(injections)) {
+    const fullPath = path.join(projectPath, filePath);
+    
+    if (!await fs.pathExists(fullPath)) {
+      console.warn(chalk.yellow(`⚠️  Arquivo não encontrado para injeção: ${filePath}`));
+      continue;
+    }
+    
+    try {
+      let content = await fs.readFile(fullPath, 'utf8');
+      const lines = content.split('\n');
+      
+      // Encontrar a linha que contém o texto "after"
+      const afterIndex = lines.findIndex(line => line.includes(injectionConfig.after));
+      
+      if (afterIndex !== -1) {
+        // Inserir o conteúdo na linha seguinte
+        lines.splice(afterIndex + 1, 0, injectionConfig.insert);
+        content = lines.join('\n');
+        
+        await fs.writeFile(fullPath, content, 'utf8');
+        console.log(chalk.green(`✅ Injeção aplicada em ${filePath}`));
+      } else {
+        console.warn(chalk.yellow(`⚠️  Texto '${injectionConfig.after}' não encontrado em ${filePath}`));
+      }
+    } catch (error) {
+      console.warn(chalk.yellow(`⚠️  Erro ao aplicar injeção em ${filePath}: ${error.message}`));
+    }
+  }
+}
+
+/**
+ * Copia arquivos seguindo as regras de cópia do módulo
+ */
+async function copyModuleFiles(modulePath, projectPath, copyRules) {
+  if (!copyRules || Object.keys(copyRules).length === 0) {
+    // Se não há regras específicas, copiar tudo exceto phobos.meta.json
+    const files = await fs.readdir(modulePath);
+    for (const file of files) {
+      if (file !== 'phobos.meta.json') {
+        const sourcePath = path.join(modulePath, file);
+        const destPath = path.join(projectPath, file);
+        await fs.copy(sourcePath, destPath, { overwrite: true });
+      }
+    }
+    return;
+  }
+  
+  // Aplicar regras de cópia específicas
+  for (const [source, destination] of Object.entries(copyRules)) {
+    const sourcePath = path.join(modulePath, source);
+    const destPath = path.join(projectPath, destination);
+    
+    if (await fs.pathExists(sourcePath)) {
+      await fs.ensureDir(path.dirname(destPath));
+      await fs.copy(sourcePath, destPath, { overwrite: true });
+      console.log(chalk.blue(`📁 Copiado: ${source} → ${destination}`));
+    } else {
+      console.warn(chalk.yellow(`⚠️  Caminho não encontrado: ${source}`));
+    }
+  }
+}
+
+/**
+ * Atualiza o package.json com dependências e scripts dos módulos
+ */
+async function updatePackageJson(projectPath, selectedModules, modulesMetadata) {
+  const packageJsonPath = path.join(projectPath, 'package.json');
+  
+  if (!await fs.pathExists(packageJsonPath)) {
+    throw new Error(`Arquivo package.json não encontrado em ${packageJsonPath}`);
+  }
+  
+  let packageJson;
+  try {
+    packageJson = await fs.readJson(packageJsonPath);
+  } catch (error) {
+    throw new Error(`Erro ao ler package.json: ${error.message}`);
+  }
+  
+  if (!packageJson || typeof packageJson !== 'object') {
+    throw new Error('package.json inválido ou vazio');
+  }
+  
+  // Garantir que as seções existam
+  if (!packageJson.dependencies) packageJson.dependencies = {};
+  if (!packageJson.devDependencies) packageJson.devDependencies = {};
+  if (!packageJson.scripts) packageJson.scripts = {};
+  
+  // Adicionar dependências e scripts dos módulos selecionados
+  for (const moduleKey of selectedModules) {
+    const module = modulesMetadata[moduleKey];
+    if (!module) continue;
+    
+    // Adicionar dependências
+    if (module.dependencies) {
+      packageJson.dependencies = {
+        ...packageJson.dependencies,
+        ...module.dependencies
+      };
+    }
+    
+    // Adicionar devDependencies
+    if (module.devDependencies) {
+      packageJson.devDependencies = {
+        ...packageJson.devDependencies,
+        ...module.devDependencies
+      };
+    }
+    
+    // Adicionar scripts
+    if (module.scripts) {
+      packageJson.scripts = {
+        ...packageJson.scripts,
+        ...module.scripts
+      };
+    }
+  }
+  
+  // Salvar package.json atualizado
+  try {
+    await fs.writeJson(packageJsonPath, packageJson, { spaces: 2 });
+    console.log(chalk.green('✅ package.json atualizado com sucesso'));
+  } catch (error) {
+    throw new Error(`Erro ao salvar package.json: ${error.message}`);
+  }
+}
+
+/**
+ * Detecta o gerenciador de pacotes
+ */
+function detectPackageManager(projectPath) {
+  // Verificar no diretório do projeto criado
+  if (fs.existsSync(path.join(projectPath, 'pnpm-lock.yaml'))) return 'pnpm';
+  if (fs.existsSync(path.join(projectPath, 'yarn.lock'))) return 'yarn';
+  
+  // Fallback: verificar no diretório atual
+  if (fs.existsSync('pnpm-lock.yaml')) return 'pnpm';
+  if (fs.existsSync('yarn.lock')) return 'yarn';
+  
+  return 'npm';
+}
+
+/**
+ * Função principal para criar o projeto
+ */
+async function createProject(projectName) {
+  const spinner = ora('Carregando módulos disponíveis...').start();
+  
+  try {
+    // Carregar metadados dos módulos
+    const modulesMetadata = await loadModulesMetadata();
+    
+    spinner.text = 'Configurando interface interativa...';
+    
     // Perguntar quais módulos incluir
     const { selectedModules } = await inquirer.prompt([
       {
         type: 'checkbox',
         name: 'selectedModules',
         message: 'Quais módulos você deseja incluir no seu projeto?',
-        choices: Object.entries(MODULES).map(([key, module]) => ({
+        choices: Object.values(modulesMetadata).map(module => ({
           name: `${module.name} - ${module.description}`,
-          value: key,
-          checked: ['styled-ui', 'react-router'].includes(key) // Módulos padrão
+          value: module.key,
+          checked: ['styled-ui', 'react-router'].includes(module.key) // Módulos padrão
         }))
       }
     ]);
@@ -87,80 +238,30 @@ async function createProject(projectName) {
     const baseTemplatePath = path.join(__dirname, '../template/base');
     await fs.copy(baseTemplatePath, projectPath);
 
-    // Copiar módulos selecionados (excluindo package.json dos módulos)
+    // Copiar módulos selecionados
     for (const moduleKey of selectedModules) {
+      const module = modulesMetadata[moduleKey];
       const modulePath = path.join(__dirname, `../template/modules/${moduleKey}`);
-      if (await fs.pathExists(modulePath)) {
-        // Copiar todos os arquivos exceto package.json
-        const files = await fs.readdir(modulePath);
-        for (const file of files) {
-          if (file !== 'package.json') {
-            const sourcePath = path.join(modulePath, file);
-            const destPath = path.join(projectPath, file);
-            await fs.copy(sourcePath, destPath, { overwrite: true });
-          }
-        }
-      }
-    }
-
-    spinner.text = 'Configurando dependências...';
-    
-    // Ler package.json do projeto
-    const packageJsonPath = path.join(projectPath, 'package.json');
-    
-    // Verificar se o arquivo existe e é válido
-    if (!await fs.pathExists(packageJsonPath)) {
-      throw new Error(`Arquivo package.json não encontrado em ${packageJsonPath}`);
-    }
-    
-    let packageJson;
-    try {
-      packageJson = await fs.readJson(packageJsonPath);
-    } catch (error) {
-      throw new Error(`Erro ao ler package.json: ${error.message}`);
-    }
-
-    // Verificar se packageJson é válido
-    if (!packageJson || typeof packageJson !== 'object') {
-      throw new Error('package.json inválido ou vazio');
-    }
-
-    // Garantir que dependencies existe
-    if (!packageJson.dependencies) {
-      packageJson.dependencies = {};
-    }
-
-    // Adicionar dependências dos módulos selecionados
-    for (const moduleKey of selectedModules) {
-      const module = MODULES[moduleKey];
-      if (module.dependencies) {
-        packageJson.dependencies = {
-          ...packageJson.dependencies,
-          ...module.dependencies
-        };
-      }
-    }
-
-    // Adicionar scripts dos módulos selecionados
-    for (const moduleKey of selectedModules) {
-      if (moduleKey === 'testing') {
-        if (!packageJson.scripts) packageJson.scripts = {};
-        packageJson.scripts.test = 'vitest';
-        packageJson.scripts['test:ui'] = 'vitest --ui';
-        packageJson.scripts['test:coverage'] = 'vitest --coverage';
-      }
       
-      if (moduleKey === 'local-cli') {
-        if (!packageJson.scripts) packageJson.scripts = {};
-        packageJson.scripts.generate = 'tsx tools/cli.ts';
+      if (await fs.pathExists(modulePath)) {
+        spinner.text = `Copiando módulo: ${module.name}...`;
+        await copyModuleFiles(modulePath, projectPath, module.copyRules);
       }
     }
 
-    // Salvar package.json atualizado
-    try {
-      await fs.writeJson(packageJsonPath, packageJson, { spaces: 2 });
-    } catch (error) {
-      throw new Error(`Erro ao salvar package.json: ${error.message}`);
+    spinner.text = 'Configurando dependências e scripts...';
+    
+    // Atualizar package.json
+    await updatePackageJson(projectPath, selectedModules, modulesMetadata);
+
+    spinner.text = 'Aplicando injeções de código...';
+    
+    // Aplicar injeções de código
+    for (const moduleKey of selectedModules) {
+      const module = modulesMetadata[moduleKey];
+      if (module.injections) {
+        await applyInjections(projectPath, module.injections);
+      }
     }
 
     spinner.text = 'Instalando dependências...';
@@ -203,7 +304,8 @@ async function createProject(projectName) {
     console.log(chalk.white(`   Módulos incluídos: ${selectedModules.length}`));
     
     selectedModules.forEach(moduleKey => {
-      console.log(chalk.green(`   ✓ ${MODULES[moduleKey].name}`));
+      const module = modulesMetadata[moduleKey];
+      console.log(chalk.green(`   ✓ ${module.name}`));
     });
 
     console.log('\n' + chalk.yellow('🚀 Para começar:'));
@@ -221,18 +323,6 @@ async function createProject(projectName) {
     spinner.fail(chalk.red('❌ Erro ao criar o projeto'));
     throw error;
   }
-}
-
-function detectPackageManager(projectPath) {
-  // Verificar no diretório do projeto criado
-  if (fs.existsSync(path.join(projectPath, 'pnpm-lock.yaml'))) return 'pnpm';
-  if (fs.existsSync(path.join(projectPath, 'yarn.lock'))) return 'yarn';
-  
-  // Fallback: verificar no diretório atual
-  if (fs.existsSync('pnpm-lock.yaml')) return 'pnpm';
-  if (fs.existsSync('yarn.lock')) return 'yarn';
-  
-  return 'npm';
 }
 
 module.exports = { createProject }; 

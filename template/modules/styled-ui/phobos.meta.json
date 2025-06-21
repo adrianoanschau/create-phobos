@@ -1,0 +1,23 @@
+{
+  "name": "UI com Styled-Components",
+  "description": "Componentes reutilizáveis (Button, Input, Card, etc.) com Styled-Components",
+  "dependencies": {
+    "styled-components": "^6.1.0"
+  },
+  "devDependencies": {
+    "@types/styled-components": "^5.1.34"
+  },
+  "scripts": {
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
+  },
+  "injections": {
+    "src/main.tsx": {
+      "after": "import './index.css'",
+      "insert": "import 'styled-components';"
+    }
+  },
+  "copyRules": {
+    "src/modules/styled-ui": "src/modules/styled-ui"
+  }
+} 
