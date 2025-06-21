@@ -14,7 +14,8 @@ program
   .description('CLI interativa para criar projetos React modernos com TypeScript e Vite')
   .version('1.0.0')
   .argument('[project-name]', 'Nome do projeto')
-  .action(async (projectName) => {
+  .option('--all', 'Incluir todos os módulos automaticamente')
+  .action(async (projectName, options) => {
     try {
       if (!projectName) {
         const { name } = await inquirer.prompt([
@@ -42,7 +43,7 @@ program
         process.exit(1);
       }
 
-      await createProject(projectName);
+      await createProject(projectName, options);
     } catch (error) {
       console.error(chalk.red('❌ Erro ao criar o projeto:'), error.message);
       process.exit(1);

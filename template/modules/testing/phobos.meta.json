@@ -14,14 +14,9 @@
     "test:coverage": "vitest --coverage",
     "test:watch": "vitest --watch"
   },
-  "injections": {
-    "src/main.tsx": {
-      "after": "import './index.css'",
-      "insert": "import '@testing-library/jest-dom';"
-    }
-  },
   "copyRules": {
-    "src/modules/testing": "src/modules/testing",
+    "src/test": "src/test",
+    "src/components": "src/components",
     "vitest.config.ts": "vitest.config.ts"
   }
 } 

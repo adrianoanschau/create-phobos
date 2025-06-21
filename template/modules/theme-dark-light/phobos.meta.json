@@ -10,17 +10,10 @@
   "scripts": {
     "theme:generate": "tsx tools/generate-theme.ts"
   },
-  "injections": {
-    "src/main.tsx": {
-      "after": "import React from 'react'",
-      "insert": "import { ThemeProvider } from './modules/theme-dark-light/contexts/ThemeContext';"
-    },
-    "src/App.tsx": {
-      "after": "import { useState } from 'react';",
-      "insert": "import { useTheme } from './modules/theme-dark-light/contexts/ThemeContext';"
-    }
-  },
   "copyRules": {
-    "src/modules/theme-dark-light": "src/modules/theme-dark-light"
+    "src/contexts": "src/contexts",
+    "src/components": "src/components",
+    "src/styles": "src/styles",
+    "src/hooks": "src/hooks"
   }
 } 

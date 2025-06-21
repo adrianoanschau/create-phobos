@@ -11,13 +11,8 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },
-  "injections": {
-    "src/main.tsx": {
-      "after": "import './index.css'",
-      "insert": "import 'styled-components';"
-    }
-  },
   "copyRules": {
-    "src/modules/styled-ui": "src/modules/styled-ui"
+    "src/components": "src/components",
+    "src/styles": "src/styles"
   }
 } 

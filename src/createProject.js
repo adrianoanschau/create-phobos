@@ -56,52 +56,136 @@ async function loadModulesMetadata() {
 }
 
 /**
- * Aplica injeções de código em arquivos
+ * Gera o PhobosProvider.tsx dinamicamente baseado nos módulos selecionados
  */
-async function applyInjections(projectPath, injections) {
-  for (const [filePath, injectionConfig] of Object.entries(injections)) {
-    const fullPath = path.join(projectPath, filePath);
+async function generatePhobosProvider(projectPath, selectedModules, modulesMetadata) {
+  const providerPath = path.join(projectPath, 'src/PhobosProvider.tsx');
+  
+  let imports = ['import React from \'react\';'];
+  let providers = [];
+  
+  // Adicionar imports e providers baseado nos módulos selecionados
+  for (const moduleKey of selectedModules) {
+    const module = modulesMetadata[moduleKey];
     
-    if (!await fs.pathExists(fullPath)) {
-      console.warn(chalk.yellow(`⚠️  Arquivo não encontrado para injeção: ${filePath}`));
-      continue;
-    }
-    
-    try {
-      let content = await fs.readFile(fullPath, 'utf8');
-      const lines = content.split('\n');
-      
-      // Encontrar a linha que contém o texto "after"
-      const afterIndex = lines.findIndex(line => line.includes(injectionConfig.after));
-      
-      if (afterIndex !== -1) {
-        // Inserir o conteúdo na linha seguinte
-        lines.splice(afterIndex + 1, 0, injectionConfig.insert);
-        content = lines.join('\n');
-        
-        await fs.writeFile(fullPath, content, 'utf8');
-        console.log(chalk.green(`✅ Injeção aplicada em ${filePath}`));
-      } else {
-        console.warn(chalk.yellow(`⚠️  Texto '${injectionConfig.after}' não encontrado em ${filePath}`));
-      }
-    } catch (error) {
-      console.warn(chalk.yellow(`⚠️  Erro ao aplicar injeção em ${filePath}: ${error.message}`));
+    switch (moduleKey) {
+      case 'theme-dark-light':
+        imports.push('import { ThemeProvider } from \'./contexts/ThemeContext\';');
+        providers.push('ThemeProvider');
+        break;
+      case 'react-router':
+        imports.push('import { BrowserRouter } from \'react-router-dom\';');
+        providers.push('BrowserRouter');
+        break;
     }
   }
+  
+  // Gerar o conteúdo do PhobosProvider
+  const providerContent = `${imports.join('\n')}
+
+export const PhobosProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  let app = children;
+  
+  ${providers.map(provider => `// ${provider} wrapper`).join('\n  ')}
+  ${providers.map(provider => `app = <${provider}>{app}</${provider}>;`).join('\n  ')}
+  
+  return app;
+};
+`;
+
+  await fs.writeFile(providerPath, providerContent, 'utf8');
+  console.log(chalk.green('✅ PhobosProvider.tsx gerado dinamicamente'));
 }
 
 /**
- * Copia arquivos seguindo as regras de cópia do módulo
+ * Gera o main.tsx final com PhobosProvider
+ */
+async function generateMainTsx(projectPath) {
+  const mainPath = path.join(projectPath, 'src/main.tsx');
+  
+  const mainContent = `import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import { PhobosProvider } from './PhobosProvider';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <PhobosProvider>
+      <App />
+    </PhobosProvider>
+  </React.StrictMode>
+);
+`;
+
+  await fs.writeFile(mainPath, mainContent, 'utf8');
+  console.log(chalk.green('✅ main.tsx atualizado com PhobosProvider'));
+}
+
+/**
+ * Gera o App.tsx final baseado nos módulos selecionados
+ */
+async function generateAppTsx(projectPath, selectedModules, modulesMetadata) {
+  const appPath = path.join(projectPath, 'src/App.tsx');
+  
+  let imports = ['import React from \'react\';'];
+  let content = '';
+  
+  // Verificar se react-router está selecionado
+  if (selectedModules.includes('react-router')) {
+    imports.push('import { Layout } from \'./components/Layout\';');
+    imports.push('import { AppRoutes } from \'./routes\';');
+    
+    content = `
+function App() {
+  return (
+    <Layout>
+      <AppRoutes />
+    </Layout>
+  );
+}`;
+  } else {
+    // App.tsx básico sem roteamento
+    content = `
+function App() {
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1>🚀 Phobos App</h1>
+        <p>Template moderno com React + TypeScript + Vite</p>
+      </header>
+    </div>
+  );
+}`;
+  }
+  
+  const appContent = `${imports.join('\n')}
+import './App.css';
+${content}
+
+export default App;
+`;
+
+  await fs.writeFile(appPath, appContent, 'utf8');
+  console.log(chalk.green('✅ App.tsx gerado dinamicamente'));
+}
+
+/**
+ * Copia arquivos de módulos de forma integrada
  */
 async function copyModuleFiles(modulePath, projectPath, copyRules) {
   if (!copyRules || Object.keys(copyRules).length === 0) {
-    // Se não há regras específicas, copiar tudo exceto phobos.meta.json
+    // Copiar tudo exceto phobos.meta.json e arquivos principais
     const files = await fs.readdir(modulePath);
     for (const file of files) {
-      if (file !== 'phobos.meta.json') {
+      if (file !== 'phobos.meta.json' && file !== 'App.tsx' && file !== 'main.tsx') {
         const sourcePath = path.join(modulePath, file);
         const destPath = path.join(projectPath, file);
-        await fs.copy(sourcePath, destPath, { overwrite: true });
+        
+        if (await fs.pathExists(sourcePath)) {
+          await fs.copy(sourcePath, destPath, { overwrite: true });
+          console.log(chalk.blue(`📁 Integrado: ${file}`));
+        }
       }
     }
     return;
@@ -115,7 +199,7 @@ async function copyModuleFiles(modulePath, projectPath, copyRules) {
     if (await fs.pathExists(sourcePath)) {
       await fs.ensureDir(path.dirname(destPath));
       await fs.copy(sourcePath, destPath, { overwrite: true });
-      console.log(chalk.blue(`📁 Copiado: ${source} → ${destination}`));
+      console.log(chalk.blue(`📁 Integrado: ${source} → ${destination}`));
     } else {
       console.warn(chalk.yellow(`⚠️  Caminho não encontrado: ${source}`));
     }
@@ -188,18 +272,13 @@ async function updatePackageJson(projectPath, selectedModules, modulesMetadata) 
 }
 
 /**
- * Detecta o gerenciador de pacotes
+ * Detecta o gerenciador de pacotes baseado na variável de ambiente
  */
-function detectPackageManager(projectPath) {
-  // Verificar no diretório do projeto criado
-  if (fs.existsSync(path.join(projectPath, 'pnpm-lock.yaml'))) return 'pnpm';
-  if (fs.existsSync(path.join(projectPath, 'yarn.lock'))) return 'yarn';
-  
-  // Fallback: verificar no diretório atual
-  if (fs.existsSync('pnpm-lock.yaml')) return 'pnpm';
-  if (fs.existsSync('yarn.lock')) return 'yarn';
-  
-  return 'npm';
+function detectPackageManager() {
+  const userAgent = process.env.npm_config_user_agent;
+  if (userAgent?.includes('pnpm')) return 'pnpm';
+  if (userAgent?.includes('yarn')) return 'yarn';
+  return 'npm'; // fallback
 }
 
 /**
@@ -209,6 +288,10 @@ async function createProject(projectName, options = {}) {
   const spinner = ora('Carregando módulos disponíveis...').start();
   
   try {
+    // Detectar gerenciador de pacotes
+    const packageManager = detectPackageManager();
+    console.log(chalk.blue(`📦 Gerenciador de pacotes detectado: ${packageManager}`));
+    
     // Carregar metadados dos módulos
     const modulesMetadata = await loadModulesMetadata();
     const allModuleKeys = Object.keys(modulesMetadata);
@@ -245,63 +328,37 @@ async function createProject(projectName, options = {}) {
     const baseTemplatePath = path.join(__dirname, '../template/base');
     await fs.copy(baseTemplatePath, projectPath);
 
-    // Copiar módulos selecionados
+    // Remover package-lock.json se não for npm
+    if (packageManager !== 'npm') {
+      const lockFilePath = path.join(projectPath, 'package-lock.json');
+      if (fs.existsSync(lockFilePath)) {
+        fs.removeSync(lockFilePath);
+        console.log(chalk.blue(`🗑️  Removido package-lock.json (usando ${packageManager})`));
+      }
+    }
+
+    // Copiar módulos selecionados (exceto App.tsx e main.tsx)
     for (const moduleKey of selectedModules) {
       const module = modulesMetadata[moduleKey];
       const modulePath = path.join(__dirname, `../template/modules/${moduleKey}`);
       
       if (await fs.pathExists(modulePath)) {
-        spinner.text = `Copiando módulo: ${module.name}...`;
+        spinner.text = `Integrando módulo: ${module.name}...`;
         await copyModuleFiles(modulePath, projectPath, module.copyRules);
       }
     }
+
+    spinner.text = 'Gerando aplicação unificada...';
+    
+    // Gerar arquivos principais dinamicamente
+    await generatePhobosProvider(projectPath, selectedModules, modulesMetadata);
+    await generateMainTsx(projectPath);
+    await generateAppTsx(projectPath, selectedModules, modulesMetadata);
 
     spinner.text = 'Configurando dependências e scripts...';
     
     // Atualizar package.json
     await updatePackageJson(projectPath, selectedModules, modulesMetadata);
-
-    spinner.text = 'Aplicando injeções de código...';
-    
-    // Aplicar injeções de código
-    for (const moduleKey of selectedModules) {
-      const module = modulesMetadata[moduleKey];
-      if (module.injections) {
-        await applyInjections(projectPath, module.injections);
-      }
-    }
-
-    spinner.text = 'Instalando dependências...';
-    
-    // Detectar gerenciador de pacotes
-    const packageManager = detectPackageManager(projectPath);
-    
-    // Instalar dependências
-    try {
-      execSync(`${packageManager} install`, { 
-        cwd: projectPath, 
-        stdio: 'inherit' 
-      });
-    } catch (error) {
-      console.warn(chalk.yellow('⚠️  Aviso: Erro ao instalar dependências. Execute manualmente:'));
-      console.warn(chalk.white(`   cd ${projectName}`));
-      console.warn(chalk.white(`   ${packageManager} install`));
-    }
-
-    // Configurar git hooks se selecionado
-    if (selectedModules.includes('git-hooks')) {
-      spinner.text = 'Configurando Git hooks...';
-      try {
-        execSync('npx husky install', { 
-          cwd: projectPath, 
-          stdio: 'inherit' 
-        });
-      } catch (error) {
-        console.warn(chalk.yellow('⚠️  Aviso: Erro ao configurar Git hooks. Execute manualmente:'));
-        console.warn(chalk.white(`   cd ${projectName}`));
-        console.warn(chalk.white('   npx husky install'));
-      }
-    }
 
     spinner.succeed(chalk.green('✅ Projeto criado com sucesso!'));
 
@@ -309,6 +366,7 @@ async function createProject(projectName, options = {}) {
     console.log('\n' + chalk.cyan('📦 Resumo do projeto criado:'));
     console.log(chalk.white(`   Nome: ${projectName}`));
     console.log(chalk.white(`   Módulos incluídos: ${selectedModules.length}`));
+    console.log(chalk.white(`   Gerenciador: ${packageManager}`));
     
     selectedModules.forEach(moduleKey => {
       const module = modulesMetadata[moduleKey];
@@ -317,11 +375,8 @@ async function createProject(projectName, options = {}) {
 
     console.log('\n' + chalk.yellow('🚀 Para começar:'));
     console.log(chalk.white(`   cd ${projectName}`));
+    console.log(chalk.white(`   ${packageManager} install`));
     console.log(chalk.white(`   ${packageManager} dev`));
-    
-    if (selectedModules.includes('local-cli')) {
-      console.log(chalk.white(`   ${packageManager} generate`));
-    }
 
     console.log('\n' + chalk.blue('📚 Documentação:'));
     console.log(chalk.white('   Leia o README.md para mais informações'));
@@ -330,22 +385,6 @@ async function createProject(projectName, options = {}) {
     spinner.fail(chalk.red('❌ Erro ao criar o projeto'));
     throw error;
   }
-}
-
-// Adaptação para CLI
-if (require.main === module) {
-  const argv = process.argv.slice(2);
-  const projectName = argv[0];
-  const options = { all: argv.includes('--all') };
-  if (!projectName) {
-    if (options.all) {
-      console.error(chalk.red('❌ Você usou a flag --all, mas não informou o nome do projeto. Exemplo: npx create-phobos meu-app --all'));
-    } else {
-      console.error(chalk.red('❌ Informe o nome do projeto. Exemplo: npx create-phobos meu-app [--all]'));
-    }
-    process.exit(1);
-  }
-  createProject(projectName, options);
 }
 
 module.exports = { createProject }; 
