@@ -205,28 +205,35 @@ function detectPackageManager(projectPath) {
 /**
  * Função principal para criar o projeto
  */
-async function createProject(projectName) {
+async function createProject(projectName, options = {}) {
   const spinner = ora('Carregando módulos disponíveis...').start();
   
   try {
     // Carregar metadados dos módulos
     const modulesMetadata = await loadModulesMetadata();
-    
-    spinner.text = 'Configurando interface interativa...';
-    
-    // Perguntar quais módulos incluir
-    const { selectedModules } = await inquirer.prompt([
-      {
-        type: 'checkbox',
-        name: 'selectedModules',
-        message: 'Quais módulos você deseja incluir no seu projeto?',
-        choices: Object.values(modulesMetadata).map(module => ({
-          name: `${module.name} - ${module.description}`,
-          value: module.key,
-          checked: ['styled-ui', 'react-router'].includes(module.key) // Módulos padrão
-        }))
-      }
-    ]);
+    const allModuleKeys = Object.keys(modulesMetadata);
+
+    let selectedModules;
+    if (options.all) {
+      selectedModules = allModuleKeys;
+      spinner.text = 'Incluindo todos os módulos automaticamente (--all)...';
+    } else {
+      spinner.text = 'Configurando interface interativa...';
+      // Perguntar quais módulos incluir
+      const answer = await inquirer.prompt([
+        {
+          type: 'checkbox',
+          name: 'selectedModules',
+          message: 'Quais módulos você deseja incluir no seu projeto?',
+          choices: Object.values(modulesMetadata).map(module => ({
+            name: `${module.name} - ${module.description}`,
+            value: module.key,
+            checked: ['styled-ui', 'react-router'].includes(module.key) // Módulos padrão
+          }))
+        }
+      ]);
+      selectedModules = answer.selectedModules;
+    }
 
     spinner.text = 'Criando estrutura do projeto...';
     
@@ -323,6 +330,22 @@ async function createProject(projectName) {
     spinner.fail(chalk.red('❌ Erro ao criar o projeto'));
     throw error;
   }
+}
+
+// Adaptação para CLI
+if (require.main === module) {
+  const argv = process.argv.slice(2);
+  const projectName = argv[0];
+  const options = { all: argv.includes('--all') };
+  if (!projectName) {
+    if (options.all) {
+      console.error(chalk.red('❌ Você usou a flag --all, mas não informou o nome do projeto. Exemplo: npx create-phobos meu-app --all'));
+    } else {
+      console.error(chalk.red('❌ Informe o nome do projeto. Exemplo: npx create-phobos meu-app [--all]'));
+    }
+    process.exit(1);
+  }
+  createProject(projectName, options);
 }
 
 module.exports = { createProject }; 
