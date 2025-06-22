@@ -1,6 +1,6 @@
 {
   "name": "create-phobos",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "description": "CLI moderna para criar projetos React com TypeScript, Vite e módulos plugáveis",
   "main": "index.js",
   "bin": {
@@ -46,7 +46,7 @@
   },
   "homepage": "https://github.com/adrianosantos/create-phobos#readme",
   "dependencies": {
-    "inquirer": "^9.2.12",
+    "inquirer": "^8.2.6",
     "chalk": "^4.1.2",
     "ora": "^5.4.1",
     "fs-extra": "^11.1.1"
