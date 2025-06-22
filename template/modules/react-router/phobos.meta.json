@@ -1,15 +1,13 @@
 {
-  "name": "React Router com estrutura de rotas",
-  "description": "Rotas com BrowserRouter, pages/, routes/ e layouts responsivos",
-  "dependencies": {
-    "react-router-dom": "^6.20.0"
-  },
-  "scripts": {
-    "routes": "tsx tools/generate-routes.ts"
-  },
-  "copyRules": {
-    "src/components": "src/components",
-    "src/pages": "src/pages",
-    "src/routes": "src/routes"
-  }
-} 
+    "name": "React Router",
+    "description": "Rotas com BrowserRouter, pages/, routes/",
+    "dependencies": {
+      "react-router-dom": "^7.6.2"
+    },
+    "scripts": {
+      "routes": "tsx tools/generate-routes.ts"
+    },
+    "copyRules": {
+      "src/router": "src/router"
+    }
+  } 

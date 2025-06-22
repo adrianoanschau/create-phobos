@@ -6,6 +6,16 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 /**
+ * Detecta o gerenciador de pacotes baseado na variável de ambiente
+ */
+function detectPackageManager() {
+  const userAgent = process.env.npm_config_user_agent;
+  if (userAgent?.includes('pnpm')) return 'pnpm';
+  if (userAgent?.includes('yarn')) return 'yarn';
+  return 'npm'; // fallback
+}
+
+/**
  * Carrega os metadados de todos os módulos disponíveis
  */
 async function loadModulesMetadata() {
@@ -59,37 +69,41 @@ async function loadModulesMetadata() {
  * Gera o PhobosProvider.tsx dinamicamente baseado nos módulos selecionados
  */
 async function generatePhobosProvider(projectPath, selectedModules, modulesMetadata) {
-  const providerPath = path.join(projectPath, 'src/PhobosProvider.tsx');
+  const providerPath = path.join(projectPath, 'src/phobos/provider.tsx');
   
-  let imports = ['import React from \'react\';'];
+  let imports = [];
   let providers = [];
-  
-  // Adicionar imports e providers baseado nos módulos selecionados
-  for (const moduleKey of selectedModules) {
-    const module = modulesMetadata[moduleKey];
-    
-    switch (moduleKey) {
-      case 'theme-dark-light':
-        imports.push('import { ThemeProvider } from \'./contexts/ThemeContext\';');
-        providers.push('ThemeProvider');
-        break;
-      case 'react-router':
-        imports.push('import { BrowserRouter } from \'react-router-dom\';');
-        providers.push('BrowserRouter');
-        break;
-    }
+  let children = [];
+
+  if (selectedModules.includes('react-router')) {
+    imports.push('import { RouterProvider } from "react-router-dom";');
+    imports.push('import { router } from "@/router";');
+    children.push('<RouterProvider router={router} />');
+  } else {
+    imports.push('import HomePage from "@/pages/home";');
+    children.push('<HomePage />');
   }
+
+  if (selectedModules.includes('theme-provider')) {
+    imports.push('import { PhobosThemeProvider } from "@/theme";');
+    providers.push(`<PhobosThemeProvider>
+        ${children.join('\n')}
+      </PhobosThemeProvider>`);
+  } else {
+    providers.push(children.join('\n'));
+  }
+
+  imports.push("import { PhobosContext } from './context';");
   
   // Gerar o conteúdo do PhobosProvider
   const providerContent = `${imports.join('\n')}
 
-export const PhobosProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  let app = children;
-  
-  ${providers.map(provider => `// ${provider} wrapper`).join('\n  ')}
-  ${providers.map(provider => `app = <${provider}>{app}</${provider}>;`).join('\n  ')}
-  
-  return app;
+export function PhobosProvider() {
+  return (
+    <PhobosContext.Provider value={{}}>
+      ${providers.join('\n')}
+    </PhobosContext.Provider>
+  );
 };
 `;
 
@@ -98,87 +112,14 @@ export const PhobosProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 }
 
 /**
- * Gera o main.tsx final com PhobosProvider
- */
-async function generateMainTsx(projectPath) {
-  const mainPath = path.join(projectPath, 'src/main.tsx');
-  
-  const mainContent = `import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-import { PhobosProvider } from './PhobosProvider';
-import './index.css';
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <PhobosProvider>
-      <App />
-    </PhobosProvider>
-  </React.StrictMode>
-);
-`;
-
-  await fs.writeFile(mainPath, mainContent, 'utf8');
-  console.log(chalk.green('✅ main.tsx atualizado com PhobosProvider'));
-}
-
-/**
- * Gera o App.tsx final baseado nos módulos selecionados
- */
-async function generateAppTsx(projectPath, selectedModules, modulesMetadata) {
-  const appPath = path.join(projectPath, 'src/App.tsx');
-  
-  let imports = ['import React from \'react\';'];
-  let content = '';
-  
-  // Verificar se react-router está selecionado
-  if (selectedModules.includes('react-router')) {
-    imports.push('import { Layout } from \'./components/Layout\';');
-    imports.push('import { AppRoutes } from \'./routes\';');
-    
-    content = `
-function App() {
-  return (
-    <Layout>
-      <AppRoutes />
-    </Layout>
-  );
-}`;
-  } else {
-    // App.tsx básico sem roteamento
-    content = `
-function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <h1>🚀 Phobos App</h1>
-        <p>Template moderno com React + TypeScript + Vite</p>
-      </header>
-    </div>
-  );
-}`;
-  }
-  
-  const appContent = `${imports.join('\n')}
-import './App.css';
-${content}
-
-export default App;
-`;
-
-  await fs.writeFile(appPath, appContent, 'utf8');
-  console.log(chalk.green('✅ App.tsx gerado dinamicamente'));
-}
-
-/**
  * Copia arquivos de módulos de forma integrada
  */
 async function copyModuleFiles(modulePath, projectPath, copyRules) {
   if (!copyRules || Object.keys(copyRules).length === 0) {
-    // Copiar tudo exceto phobos.meta.json e arquivos principais
+    // Copiar tudo exceto phobos.meta.json
     const files = await fs.readdir(modulePath);
     for (const file of files) {
-      if (file !== 'phobos.meta.json' && file !== 'App.tsx' && file !== 'main.tsx') {
+      if (file !== 'phobos.meta.json') {
         const sourcePath = path.join(modulePath, file);
         const destPath = path.join(projectPath, file);
         
@@ -271,14 +212,44 @@ async function updatePackageJson(projectPath, selectedModules, modulesMetadata) 
   }
 }
 
-/**
- * Detecta o gerenciador de pacotes baseado na variável de ambiente
- */
-function detectPackageManager() {
-  const userAgent = process.env.npm_config_user_agent;
-  if (userAgent?.includes('pnpm')) return 'pnpm';
-  if (userAgent?.includes('yarn')) return 'yarn';
-  return 'npm'; // fallback
+async function selectModules(modulesMetadata, options, spinner) {
+  // Carregar metadados dos módulos
+  const allModuleKeys = Object.keys(modulesMetadata);
+  
+  if (options.all) {
+    spinner.text = 'Incluindo todos os módulos automaticamente (--all)...';
+
+    return allModuleKeys;
+  }
+
+  const answer = await inquirer.prompt([
+    {
+      type: 'checkbox',
+      name: 'features',
+      message: 'Quais módulos você deseja incluir no seu projeto:',
+      choices: [...allModuleKeys, null].map(key => {
+        if (!key) return {
+          name: '',
+          value: null,
+          checked: false,
+        };
+
+        const module = modulesMetadata[key];
+        const name = `${module.name}`.padEnd(20, ' ');
+        const description = `${module.description}`.padEnd(40, ' ');
+
+        return {
+          name: `${name}· ${description}`,
+          value: key,
+          checked: ['react-router', 'theme-provider'].includes(module.key),
+        };
+      }),
+      pageSize: 10,
+      default: ['react-router', 'theme-provider'],
+    }
+  ]);
+
+  return answer.features.filter(Boolean);
 }
 
 /**
@@ -291,32 +262,9 @@ async function createProject(projectName, options = {}) {
     // Detectar gerenciador de pacotes
     const packageManager = detectPackageManager();
     console.log(chalk.blue(`📦 Gerenciador de pacotes detectado: ${packageManager}`));
-    
-    // Carregar metadados dos módulos
-    const modulesMetadata = await loadModulesMetadata();
-    const allModuleKeys = Object.keys(modulesMetadata);
 
-    let selectedModules;
-    if (options.all) {
-      selectedModules = allModuleKeys;
-      spinner.text = 'Incluindo todos os módulos automaticamente (--all)...';
-    } else {
-      spinner.text = 'Configurando interface interativa...';
-      // Perguntar quais módulos incluir
-      const answer = await inquirer.prompt([
-        {
-          type: 'checkbox',
-          name: 'selectedModules',
-          message: 'Quais módulos você deseja incluir no seu projeto?',
-          choices: Object.values(modulesMetadata).map(module => ({
-            name: `${module.name} - ${module.description}`,
-            value: module.key,
-            checked: ['styled-ui', 'react-router'].includes(module.key) // Módulos padrão
-          }))
-        }
-      ]);
-      selectedModules = answer.selectedModules;
-    }
+    const modulesMetadata = await loadModulesMetadata();
+    const selectedModules = await selectModules(modulesMetadata, options, spinner);
 
     spinner.text = 'Criando estrutura do projeto...';
     
@@ -328,16 +276,7 @@ async function createProject(projectName, options = {}) {
     const baseTemplatePath = path.join(__dirname, '../template/base');
     await fs.copy(baseTemplatePath, projectPath);
 
-    // Remover package-lock.json se não for npm
-    if (packageManager !== 'npm') {
-      const lockFilePath = path.join(projectPath, 'package-lock.json');
-      if (fs.existsSync(lockFilePath)) {
-        fs.removeSync(lockFilePath);
-        console.log(chalk.blue(`🗑️  Removido package-lock.json (usando ${packageManager})`));
-      }
-    }
-
-    // Copiar módulos selecionados (exceto App.tsx e main.tsx)
+    // Copiar módulos selecionados
     for (const moduleKey of selectedModules) {
       const module = modulesMetadata[moduleKey];
       const modulePath = path.join(__dirname, `../template/modules/${moduleKey}`);
@@ -349,11 +288,9 @@ async function createProject(projectName, options = {}) {
     }
 
     spinner.text = 'Gerando aplicação unificada...';
-    
+
     // Gerar arquivos principais dinamicamente
     await generatePhobosProvider(projectPath, selectedModules, modulesMetadata);
-    await generateMainTsx(projectPath);
-    await generateAppTsx(projectPath, selectedModules, modulesMetadata);
 
     spinner.text = 'Configurando dependências e scripts...';
     
@@ -372,7 +309,7 @@ async function createProject(projectName, options = {}) {
       const module = modulesMetadata[moduleKey];
       console.log(chalk.green(`   ✓ ${module.name}`));
     });
-
+    
     console.log('\n' + chalk.yellow('🚀 Para começar:'));
     console.log(chalk.white(`   cd ${projectName}`));
     console.log(chalk.white(`   ${packageManager} install`));

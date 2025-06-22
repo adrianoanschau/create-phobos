@@ -1,0 +1,16 @@
+{
+    "name": "Theme Provider",
+    "description": "Theme Provider with styled-components toggle and responsive design and basic ui components",
+    "dependencies": {
+        "styled-components": "^6.1.0"
+    },
+    "devDependencies": {
+        "@types/styled-components": "^5.1.34"
+    },
+    "scripts": {
+    },
+    "copyRules": {
+        "src/theme": "src/theme",
+        "src/components/ui": "src/components/ui"
+    }
+  } 
